@@ -148,18 +148,38 @@ jobs:
           # This matches how users on HPC clusters run the SIF.
           apptainer instance start /tmp/openms.sif openms-test
           apptainer instance list
+          # Record where this run's logs will land so subsequent steps can tail
+          # them deterministically (path depends on hostname/user).
+          LOG_DIR=$(find "$HOME/.apptainer/instances/logs" -type d -name "$(whoami)" 2>/dev/null | head -n 1)
+          echo "APPTAINER_LOG_DIR=${LOG_DIR}" >> "$GITHUB_ENV"
+          ls -la "$LOG_DIR" || true
 
       - name: Wait for streamlit /_stcore/health
         run: |
+          # Tail the entrypoint's stdout/stderr alongside the health probe so
+          # any startup failure surfaces directly in the CI log (the dedicated
+          # "Dump entrypoint logs on failure" step is post-mortem only and
+          # easy to miss in the GH Actions UI).
+          OUT="${APPTAINER_LOG_DIR}/openms-test.out"
+          ERR="${APPTAINER_LOG_DIR}/openms-test.err"
           for i in $(seq 1 90); do
             if curl -fsSo /dev/null --max-time 2 http://127.0.0.1:8501/_stcore/health; then
               echo "Streamlit is ready after $i attempts"
               exit 0
             fi
-            echo "Waiting for streamlit... attempt $i"
+            if [ $((i % 5)) -eq 0 ]; then
+              echo "--- attempt $i: instance log tail ---"
+              tail -n 20 "$OUT" 2>/dev/null || echo "(no $OUT yet)"
+              tail -n 10 "$ERR" 2>/dev/null || echo "(no $ERR yet)"
+              apptainer instance list || true
+            fi
             sleep 2
           done
           echo "TIMED OUT waiting for streamlit health endpoint"
+          echo "--- full entrypoint stdout ---"
+          cat "$OUT" 2>/dev/null || echo "(missing)"
+          echo "--- full entrypoint stderr ---"
+          cat "$ERR" 2>/dev/null || echo "(missing)"
           exit 1
 
       - name: Verify health endpoint returns 200
