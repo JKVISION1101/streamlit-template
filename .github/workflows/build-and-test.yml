@@ -219,6 +219,16 @@ jobs:
           grep -q from-container /tmp/host-workspaces/probe.txt
           # Read-only data mount should also be visible inside the container.
           apptainer exec instance://openms-test grep -q from-host-pretest /mounted-data/sentinel.txt
+          # The mounted-drive browser uses os.path.ismount() to gate
+          # rendering (existence is no longer enough now that the image
+          # pre-creates the dir). Assert the kernel reports both paths as
+          # real mount points so the detection function returns truthy.
+          apptainer exec instance://openms-test python3 -c "
+          import os, sys
+          for p in ('/mounted-data', '/workspaces-streamlit-template'):
+              assert os.path.ismount(p), f'{p} not reported as mount point'
+              print(f'ismount({p}) = True')
+          "
 
       - name: Dump entrypoint logs on failure
         if: failure()
