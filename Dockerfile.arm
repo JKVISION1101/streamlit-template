@@ -86,8 +86,21 @@ WORKDIR /
 RUN mkdir /openms-build
 WORKDIR /openms-build
 
-# Configure.
-RUN /bin/bash -c "cmake -DCMAKE_BUILD_TYPE='Release' -DCMAKE_PREFIX_PATH='/OpenMS/contrib-build/;/usr/;/usr/local' -DHAS_XSERVER=OFF -DBOOST_USE_STATIC=OFF -DPYOPENMS=ON ../OpenMS -DPY_MEMLEAK_DISABLE=On"
+# Configure (two-pass — mirrors FLASHApp.arm).
+# Pass 1 runs under plain bash so cmake does NOT search /root/miniforge3
+# when resolving C++ system dependencies. On ARM the conda-forge build of
+# libyaml-cpp.so.0.8 is linked against a newer libstdc++ (GLIBCXX_3.4.32,
+# i.e. gcc 13+) than ubuntu:22.04's system g++ ships, so letting cmake
+# pick the miniforge yaml-cpp makes TOPP linking fail with
+#   undefined reference to `std::ios_base_library_init()@GLIBCXX_3.4.32`
+# amd64 happens to work because its conda-forge yaml-cpp build is older.
+# Pass 2 re-runs cmake inside the mamba env with PYOPENMS=ON so the Python
+# bindings can find the conda-forge Python/Cython/NumPy; CMAKE_IGNORE_PREFIX_PATH
+# keeps the C++ link command unchanged from pass 1.
+SHELL ["/bin/bash", "-c"]
+RUN cmake -DCMAKE_BUILD_TYPE='Release' -DCMAKE_PREFIX_PATH='/OpenMS/contrib-build/;/usr/;/usr/local' -DCMAKE_IGNORE_PREFIX_PATH=/root/miniforge3 -DHAS_XSERVER=OFF -DBOOST_USE_STATIC=OFF ../OpenMS
+SHELL ["mamba", "run", "-n", "streamlit-env", "/bin/bash", "-c"]
+RUN cmake -DPYOPENMS=ON -DPY_MEMLEAK_DISABLE=On -DCMAKE_IGNORE_PREFIX_PATH=/root/miniforge3 .
 
 # Build TOPP tools and clean up.
 RUN make -j4 TOPP
