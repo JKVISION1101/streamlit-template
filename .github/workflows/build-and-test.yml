@@ -275,24 +275,21 @@ jobs:
     # (not root inside the image). The entrypoint must tolerate both: this job
     # exercises that contract by running the built image under apptainer and
     # waiting for the streamlit /_stcore/health endpoint to come up.
-    needs: [build-amd64, build-arm64]
-    runs-on: ${{ matrix.runner }}
+    #
+    # amd64 only: upstream apptainer does NOT publish arm64 .deb assets
+    # (https://github.com/apptainer/apptainer/releases — every release lists
+    # only `apptainer_<ver>_amd64.deb`), so eWaterCycle/setup-apptainer fails
+    # on ubuntu-24.04-arm with "sudo exit code 100" when its
+    # `apt-get install ./apptainer_*.deb` resolves a non-existent package.
+    # Building apptainer from source on the arm runner would add ~15 min and
+    # significant maintenance surface for limited value (HPC SIF consumers
+    # remain amd64). Re-evaluate if upstream starts publishing arm64 builds.
+    needs: build-amd64
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - variant: full
-            arch: amd64
-            runner: ubuntu-latest
-          - variant: full
-            arch: arm64
-            runner: ubuntu-24.04-arm
-          - variant: simple
-            arch: amd64
-            runner: ubuntu-latest
-          - variant: simple
-            arch: arm64
-            runner: ubuntu-24.04-arm
+        variant: [full, simple]
     steps:
       - uses: actions/checkout@v4
 
@@ -309,7 +306,7 @@ jobs:
       - name: Download image artifact
         uses: actions/download-artifact@v4
         with:
-          name: openms-streamlit-${{ matrix.variant }}-${{ matrix.arch }}-image
+          name: openms-streamlit-${{ matrix.variant }}-amd64-image
           path: /tmp
 
       - name: Install apptainer
@@ -439,12 +436,8 @@ jobs:
         if: always()
         run: apptainer instance stop openms-test || true
 
-      - name: Upload validated SIF artifact (amd64 push events only)
-        # SIF publishing stays amd64-only this iteration (HPC consumers of
-        # the SIF are amd64). The arm64 matrix entry still exercises the
-        # full apptainer contract end-to-end; it just doesn't upload the
-        # resulting SIF for downstream publishing.
-        if: success() && github.event_name != 'pull_request' && matrix.arch == 'amd64'
+      - name: Upload validated SIF artifact (push events only)
+        if: success() && github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: openms-streamlit-${{ matrix.variant }}-sif
