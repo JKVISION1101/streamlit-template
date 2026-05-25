@@ -296,6 +296,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Free disk space
+        # ubuntu-latest has ~14 GB free; the full image (5-8 GB) plus kind
+        # node image plus loading the OCI tar into both docker and kind can
+        # exhaust it. The arm runner is even tighter. Same incantation as
+        # `build-arm64`'s "Free disk space" step.
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache || true
+          sudo apt-get clean
+          df -h
+
       - name: Download image artifact
         uses: actions/download-artifact@v4
         with:
@@ -530,6 +540,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Free disk space
+        # ubuntu-latest has ~14 GB free; the full image (5-8 GB) plus kind
+        # node image plus loading the OCI tar into both docker and kind can
+        # exhaust it. The arm runner is even tighter. Same incantation as
+        # `build-arm64`'s "Free disk space" step.
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache || true
+          sudo apt-get clean
+          df -h
+
       - name: Download image artifact
         uses: actions/download-artifact@v4
         with:
@@ -628,6 +648,16 @@ jobs:
             runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
+
+      - name: Free disk space
+        # ubuntu-latest has ~14 GB free; the full image (5-8 GB) plus kind
+        # node image plus loading the OCI tar into both docker and kind can
+        # exhaust it. The arm runner is even tighter. Same incantation as
+        # `build-arm64`'s "Free disk space" step.
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache || true
+          sudo apt-get clean
+          df -h
 
       - name: Download image artifact
         uses: actions/download-artifact@v4
