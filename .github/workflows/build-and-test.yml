@@ -626,6 +626,27 @@ jobs:
             echo "$host -> 200 OK"
           done
 
+      - name: Dump cluster state on failure
+        if: failure()
+        run: |
+          echo "=== nodes ==="
+          kubectl get nodes -o wide || true
+          echo "=== pods (all namespaces) ==="
+          kubectl get pods -A -o wide || true
+          echo "=== app pods describe ==="
+          kubectl describe pod -n openms -l app=${SLUG} || true
+          echo "=== app pod logs ==="
+          kubectl logs -n openms -l app=${SLUG} --tail=200 --all-containers --prefix || true
+          echo "=== app pod previous logs (if crashed) ==="
+          kubectl logs -n openms -l app=${SLUG} --tail=200 --all-containers --prefix --previous || true
+          echo "=== ingress ==="
+          kubectl get ingress -A -o wide || true
+          kubectl describe ingress -n openms || true
+          echo "=== services + endpoints ==="
+          kubectl get svc,endpoints -n openms || true
+          echo "=== ingress-nginx controller logs ==="
+          kubectl logs -n ingress-nginx -l app.kubernetes.io/component=controller --tail=200 || true
+
   test-traefik:
     needs: [build-amd64, build-arm64]
     runs-on: ${{ matrix.runner }}
@@ -741,3 +762,23 @@ jobs:
             echo ""
             echo "$host -> 200 OK"
           done
+
+      - name: Dump cluster state on failure
+        if: failure()
+        run: |
+          echo "=== nodes ==="
+          kubectl get nodes -o wide || true
+          echo "=== pods (all namespaces) ==="
+          kubectl get pods -A -o wide || true
+          echo "=== app pods describe ==="
+          kubectl describe pod -n openms -l app=${SLUG} || true
+          echo "=== app pod logs ==="
+          kubectl logs -n openms -l app=${SLUG} --tail=200 --all-containers --prefix || true
+          echo "=== app pod previous logs (if crashed) ==="
+          kubectl logs -n openms -l app=${SLUG} --tail=200 --all-containers --prefix --previous || true
+          echo "=== traefik ingressroute ==="
+          kubectl get ingressroute -A -o yaml || true
+          echo "=== services + endpoints ==="
+          kubectl get svc,endpoints -n openms || true
+          echo "=== traefik controller logs ==="
+          kubectl logs -n traefik -l app.kubernetes.io/name=traefik --tail=200 || true
