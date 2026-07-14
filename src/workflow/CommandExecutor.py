@@ -234,10 +234,9 @@ class CommandExecutor:
             tool (str): The executable name or path of the tool.
             input_output (dict): A dictionary specifying the input/output parameter names (as key) and their corresponding file paths (as value).
             custom_params (dict): A dictionary of custom parameters to pass to the tool.
-            tool_instance_name (str, optional): Key for ``params.json`` when it differs
-                from ``tool`` (e.g. multiple instances). Defaults to ``tool``.
-            Custom parameters whose keys appear in the tool's ParamXML ``type="bool"``
-            entries are passed as valueless CLI flags (``-name`` only when enabled).
+            tool_instance_name (str, optional): A unique instance name for this tool
+                invocation, used for parameter lookup when multiple instances of the
+                same tool exist. If not provided, defaults to the tool name.
 
         Returns:
             bool: True if all commands succeeded, False if any failed.
@@ -246,6 +245,8 @@ class CommandExecutor:
             ValueError: If the lengths of input/output file lists are inconsistent,
                         except for single string inputs.
         """
+        # Use tool_instance_name for parameter lookup, fall back to tool name
+        params_key = tool_instance_name if tool_instance_name else tool
         # check input: any input lists must be same length, other items can be a single string
         # e.g. input_mzML : [list of n mzML files], output_featureXML : [list of n featureXML files], input_database : database.tsv
         io_lengths = [len(v) for v in input_output.values() if len(v) > 1]
@@ -265,15 +266,8 @@ class CommandExecutor:
 
         commands = []
 
-        params = self.parameter_manager.get_parameters_from_json()
-
-        topp_tool_ini_path = Path(self.parameter_manager.ini_dir, f"{tool}.ini")
-        # Keys of type="bool" in the .ini: TOPP treats these as on/off flags (omit value when off)
-        topp_bool_flag_param_keys = (
-            bool_param_paths_from_param_xml_ini(topp_tool_ini_path, tool)
-            if topp_tool_ini_path.exists()
-            else set()
-        )
+        # Load merged parameters (_defaults + user overrides) for this tool instance
+        merged_params = self.parameter_manager.get_merged_params(params_key)
         # Construct commands for each process
         for i in range(n_processes):
             command = [tool]
@@ -292,27 +286,16 @@ class CommandExecutor:
                 # standard case, files was a list of strings, take the file name at index
                 else:
                     command += [value[i]]
-            # Add non-default TOPP tool parameters
-            if tool in params.keys():
-                for k, v in params[tool].items():
-                                   
-                    if k in topp_bool_flag_param_keys and v != "":
-                    # CLI flag: include "-k" only when enabled
-                        if isinstance(v, str):
-                            is_enabled = v.lower() == "true"
-                        else:
-                            is_enabled = bool(v)
-                        if is_enabled:
-                            command += [f"-{k}"]
-                        continue
-                    command += [f"-{k}"]
-                    # Skip only empty strings (pass flag with no value)
-                    # Note: 0 and 0.0 are valid values, so use explicit check
-                    if v != "" and v is not None:
-                        if isinstance(v, str) and "\n" in v:
-                            command += v.split("\n")
-                        else:
-                            command += [str(v)]
+            # Add merged TOPP tool parameters (_defaults + user overrides)
+            for k, v in merged_params.items():
+                command += [f"-{k}"]
+                # Skip only empty strings (pass flag with no value)
+                # Note: 0 and 0.0 are valid values, so use explicit check
+                if v != "" and v is not None:
+                    if isinstance(v, str) and "\n" in v:
+                        command += v.split("\n")
+                    else:
+                        command += [str(v)]
             # Add custom parameters
             for k, v in custom_params.items():
                 command += [f"-{k}"]
@@ -327,11 +310,6 @@ class CommandExecutor:
             # Add threads parameter for TOPP tools
             command += ["-threads", str(threads_per_command)]
             commands.append(command)
-
-            # check if a ini file has been written, if yes use it (contains custom defaults)
-            ini_path = Path(self.parameter_manager.ini_dir, tool + ".ini")
-            if ini_path.exists():
-                command += ["-ini", str(ini_path)]
 
         # Run command(s)
         if len(commands) == 1:
